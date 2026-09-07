@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vector Database From Scratch</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-main">
+        <div class="header-title-group">
+          <h1>Vector Database From Scratch</h1>
+          <p class="subtitle">Exact Search vs IVF-Flat Approximate Search</p>
+        </div>
+        <div class="status-badge-container">
+          <span id="api-status-badge" class="status-badge offline">
+            <span class="status-dot"></span>
+            <span id="api-status-text">API Checking...</span>
+          </span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Dataset Stats Grid -->
+    <section class="stats-bar">
+      <div class="stat-card">
+        <span class="stat-label">Vectors</span>
+        <span id="stat-vectors" class="stat-value">...</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Dimensions</span>
+        <span id="stat-dimension" class="stat-value">...</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">IVF Clusters</span>
+        <span id="stat-clusters" class="stat-value">...</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Default nprobe</span>
+        <span id="stat-nprobe" class="stat-value">...</span>
+      </div>
+    </section>
+
+    <!-- Query Configuration Card -->
+    <section class="card query-card">
+      <div class="card-header">
+        <h2>Query Configuration</h2>
+        <div class="sample-btn-group">
+          <button id="btn-sample" class="btn btn-secondary" title="Load an existing vector from the 50K dataset">
+            ⚡ Sample Random Vector
+          </button>
+          <span id="sample-id-tag" class="badge-tag">Sample Vector #0</span>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="vector-preview" class="input-label">128-dimensional query vector</label>
+        <textarea id="vector-preview" class="vector-input" readonly rows="3" placeholder="Click 'Sample Random Vector' to populate a 128-D vector..."></textarea>
+      </div>
+
+      <div class="controls-row">
+        <div class="control-item">
+          <label for="input-k" class="input-label">Top-k (1–50)</label>
+          <input type="number" id="input-k" min="1" max="50" value="10" class="input-number">
+        </div>
+
+        <div class="control-item slider-item">
+          <div class="slider-header">
+            <label for="slider-nprobe" class="input-label">nprobe (Clusters to probe)</label>
+            <span id="val-nprobe" class="slider-val-badge">5</span>
+          </div>
+          <input type="range" id="slider-nprobe" min="1" max="100" value="5" class="input-range">
+        </div>
+      </div>
+
+      <div class="actions-row">
+        <button id="btn-exact" class="btn btn-primary">Run Exact Search</button>
+        <button id="btn-ivf" class="btn btn-emerald">Run IVF Search</button>
+        <button id="btn-compare" class="btn btn-gradient">⚡ Compare Both</button>
+      </div>
+      <div id="search-error" class="error-banner" style="display: none;"></div>
+    </section>
+
+    <!-- Performance Metric Cards -->
+    <section class="metrics-grid">
+      <!-- Exact Card -->
+      <div class="card metric-card">
+        <div class="metric-card-header">
+          <h3>Exact Search</h3>
+          <span class="tag-pill">Brute-Force O(N)</span>
+        </div>
+        <div class="metric-body">
+          <div class="metric-item">
+            <span class="metric-label">Client-observed latency</span>
+            <span id="exact-latency" class="metric-value">—</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">Results count</span>
+            <span id="exact-count" class="metric-value">—</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">Approx. QPS</span>
+            <span id="exact-qps" class="metric-value">—</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- IVF Card -->
+      <div class="card metric-card">
+        <div class="metric-card-header">
+          <h3>IVF-Flat Search</h3>
+          <span class="tag-pill emerald">Voronoi Partitioned</span>
+        </div>
+        <div class="metric-body">
+          <div class="metric-item">
+            <span class="metric-label">Client-observed latency</span>
+            <span id="ivf-latency" class="metric-value">—</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">Candidates searched</span>
+            <span id="ivf-candidates" class="metric-value">—</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">Search-space reduction</span>
+            <span id="ivf-reduction" class="metric-value emerald-text">—</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Comparison Card -->
+      <div class="card metric-card comparison-card">
+        <div class="metric-card-header">
+          <h3>Single-Query Comparison</h3>
+          <span class="tag-pill purple">Relative Metrics</span>
+        </div>
+        <div class="metric-body">
+          <div class="metric-item">
+            <span class="metric-label">Recall@k (Ground Truth Match)</span>
+            <span id="comp-recall" class="metric-value highlight-purple">—</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">Speedup Factor</span>
+            <span id="comp-speedup" class="metric-value highlight-gold">—</span>
+          </div>
+          <p class="comparison-note">
+            * Single-query comparison. Latency varies by machine and request. Use the 500-query benchmark for stable performance comparison.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Side-by-Side Results Tables -->
+    <section class="results-grid">
+      <!-- Exact Results -->
+      <div class="card table-card">
+        <div class="table-header">
+          <h3>Exact Search Results</h3>
+          <span class="table-subtitle">Full 50,000-Vector Dot Product</span>
+        </div>
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 20%;">Rank</th>
+                <th style="width: 40%;">Vector ID</th>
+                <th style="width: 40%;">Similarity Score</th>
+              </tr>
+            </thead>
+            <tbody id="exact-results-body">
+              <tr>
+                <td colspan="3" class="table-empty">Run search to see results</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- IVF Results -->
+      <div class="card table-card">
+        <div class="table-header">
+          <h3>IVF-Flat Results</h3>
+          <span class="table-subtitle">Nearest Voronoi Partitions Only</span>
+        </div>
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 20%;">Rank</th>
+                <th style="width: 40%;">Vector ID</th>
+                <th style="width: 40%;">Similarity Score</th>
+              </tr>
+            </thead>
+            <tbody id="ivf-results-body">
+              <tr>
+                <td colspan="3" class="table-empty">Run search to see results</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Educational Explanation Card -->
+    <section class="card educational-card">
+      <h2>How IVF-Flat Works</h2>
+      <div class="edu-content">
+        <ul class="edu-list">
+          <li><strong>Voronoi Partitioning:</strong> The 50,000 vectors are partitioned into 100 Voronoi clusters using K-Means.</li>
+          <li><strong>Centroid Probing:</strong> Each query first calculates distances to the 100 centroids.</li>
+          <li><strong>nprobe Control:</strong> The <code>nprobe</code> parameter dictates how many nearest clusters are selected.</li>
+          <li><strong>Candidate Filtering:</strong> Only vectors inside those selected inverted lists become candidates for similarity evaluation.</li>
+          <li><strong>Recall vs Speed:</strong> Higher <code>nprobe</code> inspects more clusters, improving recall toward 100% while increasing candidates and latency.</li>
+        </ul>
+        <div class="edu-flow">
+          <div class="flow-step">Query Vector</div>
+          <div class="flow-arrow">↓</div>
+          <div class="flow-step">Nearest Centroids</div>
+          <div class="flow-arrow">↓</div>
+          <div class="flow-step">Selected IVF Lists</div>
+          <div class="flow-arrow">↓</div>
+          <div class="flow-step">Candidate Vectors</div>
+          <div class="flow-arrow">↓</div>
+          <div class="flow-step highlight">Top-k Similarity Results</div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <p>Vector Database From Scratch — Built with NumPy & FastAPI</p>
+    </footer>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
