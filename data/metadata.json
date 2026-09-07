@@ -1,0 +1,10 @@
+{
+  "number_of_vectors": 50000,
+  "dimension": 128,
+  "number_of_clusters": 100,
+  "vectors_per_cluster": 500,
+  "random_seed": 42,
+  "dtype": "float32",
+  "normalized": true,
+  "description": "Synthetic clustered vector dataset for vector database benchmarking"
+}
